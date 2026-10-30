@@ -1,0 +1,11 @@
+[package]
+name = "lapper-sim"
+description = "Simulator for lapper timing logic: generates sessions with faults and checks results against ground truth"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+lapper-core = { path = "../lapper-core" }

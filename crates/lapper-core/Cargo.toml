@@ -1,0 +1,10 @@
+[package]
+name = "lapper-core"
+description = "Timing logic for lapper: course definition, passage assignment, splits, penalties"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
