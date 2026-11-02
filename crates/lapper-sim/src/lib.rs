@@ -15,7 +15,13 @@ pub use scenario::{Faults, PRESETS, Scenario};
 
 /// シナリオをシード `seed` で生成し、計測ロジックで計算して、正解と照らし合わせる。
 pub fn simulate(scenario: &Scenario, seed: u64) -> (Simulation, lapper_core::Outcome, Evaluation) {
-    let sim = generate(scenario, seed);
+    check(generate(scenario, seed))
+}
+
+/// 生成したセッションを計測ロジックで計算して、正解と照らし合わせる。
+///
+/// 計測ロジックの設定だけを変えて試すときは、`sim.config` を書き換えてから呼ぶ。
+pub fn check(sim: Simulation) -> (Simulation, lapper_core::Outcome, Evaluation) {
     let outcome = lapper_core::compute(&sim.config, &sim.log, Some(sim.end));
     let evaluation = evaluate(&sim, &outcome);
     (sim, outcome, evaluation)

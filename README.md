@@ -33,6 +33,8 @@ cargo run --release -p lapper-sim -- --preset dirt --faults heavy --sweep 200
 | `--faults` | `none` / `light` / `heavy` |
 | `--seed N` / `--sweep N` | 乱数のシード / シード 1〜N をまとめて集計 |
 | `--verbose` / `--passages` | 走行ごと / 通過記録ごとの結果を表示 |
+| `--logic-max-on-course N\|none` | 計測ロジックの同時走行の上限だけを上書き（シミュレーションのスターターはプリセットのまま） |
+| `--logic-max-segment R\|none` | 計測ロジックの最大区間タイムを、標準タイムに対する割合で上書き |
 
 ## ライセンス
 

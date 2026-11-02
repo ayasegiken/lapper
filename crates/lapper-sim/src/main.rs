@@ -1,7 +1,8 @@
 use std::process::ExitCode;
 
-use lapper_core::{Disposition, OffCause, Outcome, Run, RunResult, RunStatus, format_time};
-use lapper_sim::{Faults, PRESETS, Scenario, Simulation, Tally, Verdict, simulate};
+use lapper_core::{Config, Disposition, OffCause, Outcome, Run, RunResult, RunStatus, format_time};
+use lapper_sim::scenario::seconds;
+use lapper_sim::{Faults, PRESETS, Scenario, Simulation, Tally, Verdict, check, generate};
 
 const USAGE: &str = "\
 usage: lapper-sim [options]
@@ -15,6 +16,10 @@ options:
   --heats N       runs per car
   --verbose       print every run
   --passages      print every passage and how it was assigned
+
+timing logic settings (the simulated starter keeps the preset):
+  --logic-max-on-course N|none   max cars on course
+  --logic-max-segment R|none     max segment time as a ratio of the nominal time
 ";
 
 struct Args {
@@ -26,6 +31,10 @@ struct Args {
     heats: Option<u32>,
     verbose: bool,
     passages: bool,
+    /// 計測ロジックの同時走行の上限の上書き。`Some(None)` で上限なし。
+    logic_max_on_course: Option<Option<usize>>,
+    /// 計測ロジックの最大区間タイム（標準タイムに対する割合）の上書き。`Some(None)` で制限なし。
+    logic_max_segment: Option<Option<f64>>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -38,6 +47,8 @@ fn parse_args() -> Result<Args, String> {
         heats: None,
         verbose: false,
         passages: false,
+        logic_max_on_course: None,
+        logic_max_segment: None,
     };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -51,6 +62,8 @@ fn parse_args() -> Result<Args, String> {
             "--heats" => args.heats = Some(number(&value()?)?),
             "--verbose" | "-v" => args.verbose = true,
             "--passages" => args.passages = true,
+            "--logic-max-on-course" => args.logic_max_on_course = Some(optional(&value()?)?),
+            "--logic-max-segment" => args.logic_max_segment = Some(optional(&value()?)?),
             "--help" | "-h" => return Err(String::new()),
             _ => return Err(format!("unknown option: {arg}")),
         }
@@ -60,6 +73,40 @@ fn parse_args() -> Result<Args, String> {
 
 fn number<T: std::str::FromStr>(s: &str) -> Result<T, String> {
     s.parse().map_err(|_| format!("not a number: {s}"))
+}
+
+/// 数値か `none`。
+fn optional<T: std::str::FromStr>(s: &str) -> Result<Option<T>, String> {
+    if s == "none" {
+        Ok(None)
+    } else {
+        number(s).map(Some)
+    }
+}
+
+/// プリセットから作ったセッションの、計測ロジックの設定を上書きする。
+fn adjust(args: &Args, scenario: &Scenario, config: &mut Config) {
+    if let Some(max) = args.logic_max_on_course {
+        config.max_on_course = max;
+    }
+    if let Some(ratio) = args.logic_max_segment {
+        config.max_segment = scenario
+            .segment_times
+            .iter()
+            .map(|&t| ratio.map(|r| seconds(t * r)))
+            .collect();
+    }
+}
+
+/// シード `seed` のセッションを作り、計測ロジックの設定を上書きして照合する。
+fn run(
+    args: &Args,
+    scenario: &Scenario,
+    seed: u64,
+) -> (Simulation, Outcome, lapper_sim::Evaluation) {
+    let mut sim = generate(scenario, seed);
+    adjust(args, scenario, &mut sim.config);
+    check(sim)
 }
 
 fn main() -> ExitCode {
@@ -92,11 +139,25 @@ fn main() -> ExitCode {
         "preset: {}  faults: {}  cars: {}  heats: {}  max on course: {}",
         scenario.name, args.faults, scenario.cars, scenario.heats, scenario.max_on_course
     );
+    let mut config = scenario.config();
+    adjust(&args, &scenario, &mut config);
+    let max_segment: Vec<String> = config
+        .max_segment
+        .iter()
+        .map(|m| m.map_or("none".into(), format_time))
+        .collect();
+    println!(
+        "timing logic: max on course {}  max segment {}",
+        config
+            .max_on_course
+            .map_or("none".into(), |m| m.to_string()),
+        max_segment.join(" / ")
+    );
     match args.sweep {
         Some(n) => {
             let mut total = Tally::default();
             for seed in 1..=n {
-                let (_, _, evaluation) = simulate(&scenario, seed);
+                let (_, _, evaluation) = run(&args, &scenario, seed);
                 if args.verbose {
                     print_line(&format!("seed {seed:>4}"), &evaluation.tally);
                 }
@@ -106,7 +167,7 @@ fn main() -> ExitCode {
             print_tally(&total);
         }
         None => {
-            let (sim, outcome, evaluation) = simulate(&scenario, args.seed);
+            let (sim, outcome, evaluation) = run(&args, &scenario, args.seed);
             println!("seed: {}", args.seed);
             if args.passages {
                 print_passages(&sim, &outcome);
