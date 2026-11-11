@@ -5,6 +5,8 @@ use crate::types::{GateId, MILLISECOND, Micros, SECOND};
 
 /// ゲート（チャンネル）ごとの設定。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct GateConfig {
     /// センサーの反応の遅れ。打刻された時刻からこの値を引いた時刻を通過時刻とする。
     pub delay: Micros,
@@ -23,6 +25,8 @@ impl Default for GateConfig {
 
 /// 計測ロジックの設定。
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Config {
     pub course: Course,
     /// ゲートごとの設定。ないゲートは `default_gate` を使う。

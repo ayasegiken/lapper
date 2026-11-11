@@ -11,6 +11,12 @@ use crate::types::GateId;
 /// - `[SG, SG]`: スタートとゴールが同じ光電管
 /// - `[S, A, B, A, G]`: 同じゲート `A` を 2 回通る
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(try_from = "Vec<GateId>", into = "Vec<GateId>")
+)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS), ts(as = "Vec<GateId>"))]
 pub struct Course {
     gates: Vec<GateId>,
 }
@@ -30,6 +36,21 @@ impl fmt::Display for CourseError {
 }
 
 impl std::error::Error for CourseError {}
+
+// JSON などからの読み込みでも `Course::new` の検証を通すため、ゲートの並びとの変換を用意する。
+impl TryFrom<Vec<GateId>> for Course {
+    type Error = CourseError;
+
+    fn try_from(gates: Vec<GateId>) -> Result<Course, CourseError> {
+        Course::new(gates)
+    }
+}
+
+impl From<Course> for Vec<GateId> {
+    fn from(course: Course) -> Vec<GateId> {
+        course.gates
+    }
+}
 
 impl Course {
     pub fn new(gates: Vec<GateId>) -> Result<Course, CourseError> {

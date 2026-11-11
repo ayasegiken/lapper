@@ -3,6 +3,8 @@ use crate::types::{CarId, GateId, Micros, PassageId, RunId};
 
 /// ログから計算した結果。ログが同じなら常に同じ結果になる。
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Outcome {
     /// 走行。スタートの時刻順。
     pub runs: Vec<Run>,
@@ -15,6 +17,8 @@ pub struct Outcome {
 
 /// 1 回の走行。
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Run {
     pub id: RunId,
     pub car: Option<CarId>,
@@ -31,6 +35,8 @@ pub struct Run {
 
 /// 走行の車がどう決まったか。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum CarSource {
     /// 出走待ちの列から自動で割り当てた。
     Queue,
@@ -42,6 +48,12 @@ pub enum CarSource {
 
 /// ポジションの通過状況。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(tag = "type")
+)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum Slot {
     Passed {
         passage: PassageId,
@@ -69,6 +81,12 @@ impl Slot {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(tag = "type")
+)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum RunStatus {
     Running,
     Finished,
@@ -80,6 +98,12 @@ pub enum RunStatus {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(tag = "type")
+)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum OffCause {
     /// コースアウト / リタイアの報告による。
     Reported,
@@ -104,6 +128,12 @@ impl RunStatus {
 
 /// 走行の結果。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(tag = "type", content = "time")
+)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum RunResult {
     Running,
     /// ペナルティを加えたタイム。
@@ -113,6 +143,12 @@ pub enum RunResult {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(tag = "type")
+)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum RunFlag {
     /// 通過記録の抜け（そのポジションを飛ばして割り当てた）。
     MissingPass { position: usize },
@@ -163,6 +199,8 @@ impl Run {
 
 /// 通過記録とその扱い。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct PassageReport {
     pub id: PassageId,
     pub gate: GateId,
@@ -175,6 +213,12 @@ pub struct PassageReport {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(tag = "type")
+)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum Disposition {
     Assigned {
         run: RunId,
@@ -192,6 +236,12 @@ pub enum Disposition {
 
 /// 計算中に見つかった、入力の問題。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(tag = "type", content = "target")
+)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum Warning {
     /// 同じ ID の通過記録が複数ある。最初のものだけを使った。
     DuplicatePassage(PassageId),
@@ -207,6 +257,8 @@ pub enum Warning {
 
 /// 車ごとのベストタイム。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Standing {
     pub car: CarId,
     /// ベストタイムの走行とタイム（ペナルティ込み）。
