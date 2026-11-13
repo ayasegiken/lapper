@@ -49,6 +49,11 @@ pub struct NumberedEvent {
     /// 送り手の中での番号（0 〜 2^63 - 1）。連続していなくてもよい。
     pub seq: u64,
     pub event: Event,
+    /// `true` なら、イベントの `at`（`Enqueue`、`Dequeue`、`ReportOff` の時刻）をサーバーが今のコースの時刻で置き換える。
+    /// コースの時計を知らない送り手（ブラウザー）が、運営の操作を「今」の操作として送るときに使う。
+    /// JSON では省略できる（省略すると `false`）。
+    #[serde(default)]
+    pub at_now: bool,
 }
 
 /// 追記の結果。

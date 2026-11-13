@@ -40,6 +40,7 @@ pub async fn feed(hub: Arc<Hub>, session: i64, sim: Simulation, speed: f64) -> R
                 .map(|i| NumberedEvent {
                     seq: i as u64,
                     event: sim.log[i].clone(),
+                    at_now: false,
                 })
                 .collect();
             hub.append(

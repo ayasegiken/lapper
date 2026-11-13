@@ -1,5 +1,6 @@
 <script lang="ts">
   import { fetchSessions, subscribe, type ConnectionState } from './lib/api'
+  import { outbox } from './lib/outbox.svelte'
   import type { SessionInfo } from './lib/bindings/SessionInfo'
   import type { Snapshot } from './lib/bindings/Snapshot'
   import QueueView from './lib/QueueView.svelte'
@@ -17,6 +18,8 @@
   let connection = $state<ConnectionState>('connecting')
   let loadError = $state<string | null>(null)
   let hash = $state(location.hash || '#queue')
+  // 運営の操作のボタンを出すか。見るだけの人が誤って押さないよう、既定では出さない（権限の仕組みではない）
+  let operating = $state(loadOperating())
 
   let session = $derived(sessions.find((s) => s.id === selectedId) ?? null)
 
@@ -32,6 +35,22 @@
       loadError = String(e)
     }
   }
+
+  function loadOperating(): boolean {
+    try {
+      return localStorage.getItem('lapper.operating') === 'true'
+    } catch {
+      return false
+    }
+  }
+
+  $effect(() => {
+    try {
+      localStorage.setItem('lapper.operating', String(operating))
+    } catch {
+      // 保存できなくても、このページの中では使える
+    }
+  })
 
   // 起動時と、その後 10 秒ごとにセッションの一覧を読み直す（新しいセッションに気付くため）
   $effect(() => {
@@ -63,10 +82,26 @@
       {/each}
     </select>
   {/if}
+  <label class="operating">
+    <input type="checkbox" bind:checked={operating} />
+    操作する
+  </label>
+  {#if outbox.pending > 0}
+    <span class="sending" class:retrying={outbox.retrying}>
+      {outbox.retrying ? '送り直しています' : '送信中'}（{outbox.pending}）
+    </span>
+  {/if}
   <span class="connection {connection}">
     {connection === 'open' ? '接続中' : connection === 'connecting' ? '接続しています' : '再接続しています'}
   </span>
 </header>
+
+{#if outbox.error}
+  <p class="rejected" role="alert">
+    操作を受け付けられませんでした（{outbox.error}）
+    <button type="button" onclick={() => outbox.dismissError()}>閉じる</button>
+  </p>
+{/if}
 
 <nav>
   {#each views as view (view.hash)}
@@ -82,9 +117,9 @@
   {:else if !session || !snapshot}
     <p class="message">読み込んでいます…</p>
   {:else if hash === '#passages'}
-    <PassagesView {session} {snapshot} />
+    <PassagesView {session} {snapshot} {operating} />
   {:else}
-    <QueueView {snapshot} />
+    <QueueView {session} {snapshot} {operating} />
   {/if}
 </main>
 
@@ -105,8 +140,26 @@
     max-width: 100%;
     font: inherit;
   }
-  .connection {
+  .operating {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
     margin-left: auto;
+    font-size: 0.875rem;
+  }
+  .sending {
+    font-size: 0.875rem;
+    color: var(--muted);
+  }
+  .sending.retrying {
+    color: var(--warn);
+  }
+  .rejected {
+    margin: 0;
+    padding: 0.5rem 1rem;
+    background: var(--warn-surface);
+  }
+  .connection {
     font-size: 0.875rem;
     color: var(--muted);
   }

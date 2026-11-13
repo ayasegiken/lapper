@@ -83,12 +83,20 @@ impl Hub {
 
     /// イベントを追記して結果を計算し直す。届き済みの番号のイベント（再送）は無視する。
     pub fn append(&self, id: i64, append: AppendEvents) -> Result<Appended> {
-        let AppendEvents { source, events } = append;
+        let AppendEvents { source, mut events } = append;
         if source.trim().is_empty() {
             return Err(Error::BadRequest("source is empty".into()));
         }
         let session = self.get(id)?;
         let mut state = session.state.lock().unwrap();
+        let now = state.now();
+        for numbered in &mut events {
+            if numbered.at_now {
+                let at = at_mut(&mut numbered.event)
+                    .ok_or_else(|| Error::BadRequest("at_now is for events with `at`".into()))?;
+                *at = now;
+            }
+        }
         // 保存に成功したものだけをメモリーに入れる（保存とメモリーの内容をずらさない）
         let accepted = self.store.lock().unwrap().append(
             id,
@@ -159,6 +167,35 @@ impl Session {
     }
 }
 
+impl State {
+    /// 運営の操作を「今」の操作として記録するときの時刻。
+    ///
+    /// コースの時計の時刻か、届いているどの通過記録よりも後の時刻の、遅いほう。
+    /// 同じ時刻だと列の操作が通過より先に効くので、通過記録の 1 µs 後にする（すでに始まった走行を変えないように）。
+    fn now(&self) -> Micros {
+        let after_passages = self
+            .log
+            .iter()
+            .filter_map(|event| match event {
+                Event::Passage(passage) => Some(passage.time + 1),
+                _ => None,
+            })
+            .max();
+        // Option の比較では None < Some なので、片方しかなければそちらになる
+        self.clock.max(after_passages).unwrap_or(0)
+    }
+}
+
+/// 時刻（`at`）を持つイベントなら、その時刻への可変参照を返す。
+fn at_mut(event: &mut Event) -> Option<&mut Micros> {
+    match event {
+        Event::Enqueue { at, .. } | Event::Dequeue { at, .. } | Event::ReportOff { at, .. } => {
+            Some(at)
+        }
+        _ => None,
+    }
+}
+
 fn calculate(info: &SessionInfo, state: &State) -> Snapshot {
     Snapshot {
         session: info.id,
@@ -200,7 +237,11 @@ mod tests {
             events: events
                 .into_iter()
                 .zip(first..)
-                .map(|(event, seq)| NumberedEvent { seq, event })
+                .map(|(event, seq)| NumberedEvent {
+                    seq,
+                    event,
+                    at_now: false,
+                })
                 .collect(),
         }
     }
@@ -347,5 +388,64 @@ mod tests {
             Err(Error::BadRequest(_))
         ));
         assert_eq!(hub.snapshot(id).unwrap().events, 0);
+    }
+
+    #[test]
+    fn operations_now_are_stamped_after_everything_received() {
+        let hub = Hub::open(Store::open_in_memory().unwrap()).unwrap();
+        let id = hub.create_session(new_session()).unwrap().id;
+        let enqueue = |car| Event::Enqueue {
+            car: CarId(car),
+            at: 0,
+        };
+        let mut now = numbered(0, vec![enqueue(7)]);
+        now.events[0].at_now = true;
+        // まだ何も届いていなければ 0
+        hub.append(id, now).unwrap();
+
+        hub.append(id, numbered(1, vec![pass(1, S, 10 * SECOND)]))
+            .unwrap();
+        hub.set_clock(id, 9 * SECOND).unwrap();
+        let mut now = numbered(2, vec![enqueue(8)]);
+        now.events[0].at_now = true;
+        hub.append(id, now).unwrap();
+        // 時計より通過記録のほうが新しければ、その 1 µs 後。すでに始まった #7 の走行は変わらない
+        let session = hub.get(id).unwrap();
+        let state = session.state.lock().unwrap();
+        assert_eq!(
+            state.log[2],
+            Event::Enqueue {
+                car: CarId(8),
+                at: 10 * SECOND + 1
+            }
+        );
+        assert_eq!(state.log[0], enqueue(7));
+        drop(state);
+        let snapshot = hub.snapshot(id).unwrap();
+        assert_eq!(snapshot.outcome.runs[0].car, Some(CarId(7)));
+        assert_eq!(snapshot.outcome.queue, vec![CarId(8)]);
+
+        hub.set_clock(id, 30 * SECOND).unwrap();
+        let mut now = numbered(
+            3,
+            vec![Event::Dequeue {
+                car: CarId(8),
+                at: 0,
+            }],
+        );
+        now.events[0].at_now = true;
+        hub.append(id, now).unwrap();
+        assert!(hub.snapshot(id).unwrap().outcome.queue.is_empty());
+
+        // 時刻を持たないイベントには使えない
+        let mut bad = numbered(
+            4,
+            vec![Event::SetVoid {
+                passage: PassageId(1),
+                void: true,
+            }],
+        );
+        bad.events[0].at_now = true;
+        assert!(matches!(hub.append(id, bad), Err(Error::BadRequest(_))));
     }
 }

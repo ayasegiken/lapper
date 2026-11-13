@@ -110,7 +110,7 @@ impl Store {
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6)
                  ON CONFLICT (session_id, source, source_seq) DO NOTHING",
             )?;
-            for NumberedEvent { seq, event } in events {
+            for NumberedEvent { seq, event, .. } in events {
                 // SQLite の整数は i64 なので、それを超える番号は保存できない（追記はすべて取り消す）
                 let seq = i64::try_from(seq)
                     .map_err(|_| Error::BadRequest(format!("seq is too large: {seq}")))?;
