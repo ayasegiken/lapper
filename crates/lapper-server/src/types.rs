@@ -31,16 +31,32 @@ pub struct NewSession {
 }
 
 /// イベントを追記する要求。
+///
+/// 送り手は、イベントごとに自分の中で重ならない番号を付ける。サーバーは送り手と番号の組で重複を除くので、
+/// 届いたか分からないときは、同じ番号のまま送り直せばよい。
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct AppendEvents {
-    pub events: Vec<Event>,
+    /// 送り手の ID。計測ボックスなら機器ごとの ID、ブラウザーならページを開くたびに作るランダムな ID。
+    pub source: String,
+    pub events: Vec<NumberedEvent>,
+}
+
+/// 送り手が番号を付けたイベント。
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct NumberedEvent {
+    /// 送り手の中での番号（0 〜 2^63 - 1）。連続していなくてもよい。
+    pub seq: u64,
+    pub event: Event,
 }
 
 /// 追記の結果。
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Appended {
+    /// 新しく追記したイベントの数。届き済みの番号のイベントは数えない。
+    pub accepted: usize,
     /// 追記後のログのイベントの数。
     pub events: usize,
 }

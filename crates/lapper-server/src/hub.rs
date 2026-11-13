@@ -12,7 +12,7 @@ use tokio::sync::watch;
 
 use crate::error::{Error, Result};
 use crate::store::Store;
-use crate::types::{NewSession, SessionInfo, Snapshot, default_gate_names};
+use crate::types::{AppendEvents, Appended, NewSession, SessionInfo, Snapshot, default_gate_names};
 
 pub struct Hub {
     store: Mutex<Store>,
@@ -81,18 +81,31 @@ impl Hub {
         Ok(self.get(id)?.info.clone())
     }
 
-    /// イベントを追記して結果を計算し直す。追記後のイベントの数を返す。
-    pub fn append(&self, id: i64, events: Vec<Event>) -> Result<usize> {
+    /// イベントを追記して結果を計算し直す。届き済みの番号のイベント（再送）は無視する。
+    pub fn append(&self, id: i64, append: AppendEvents) -> Result<Appended> {
+        let AppendEvents { source, events } = append;
+        if source.trim().is_empty() {
+            return Err(Error::BadRequest("source is empty".into()));
+        }
         let session = self.get(id)?;
         let mut state = session.state.lock().unwrap();
         // 保存に成功したものだけをメモリーに入れる（保存とメモリーの内容をずらさない）
-        self.store
-            .lock()
-            .unwrap()
-            .append(id, state.log.len(), &events, unix_millis())?;
-        state.log.extend(events);
-        session.publish(&state);
-        Ok(state.log.len())
+        let accepted = self.store.lock().unwrap().append(
+            id,
+            state.log.len(),
+            &source,
+            events,
+            unix_millis(),
+        )?;
+        let count = accepted.len();
+        if count > 0 {
+            state.log.extend(accepted);
+            session.publish(&state);
+        }
+        Ok(Appended {
+            accepted: count,
+            events: state.log.len(),
+        })
     }
 
     /// コースの時計の時刻を知らせる。時刻は戻らない（古い時刻は無視する）。
@@ -165,6 +178,7 @@ mod tests {
     use lapper_core::*;
 
     use super::*;
+    use crate::types::NumberedEvent;
 
     const S: GateId = GateId(0);
     const G: GateId = GateId(1);
@@ -176,6 +190,18 @@ mod tests {
             name: "test".into(),
             config,
             gate_names: None,
+        }
+    }
+
+    /// 送り手 `test` のイベント。番号は `first` から順に付ける。
+    fn numbered(first: u64, events: Vec<Event>) -> AppendEvents {
+        AppendEvents {
+            source: "test".into(),
+            events: events
+                .into_iter()
+                .zip(first..)
+                .map(|(event, seq)| NumberedEvent { seq, event })
+                .collect(),
         }
     }
 
@@ -203,7 +229,8 @@ mod tests {
             },
             pass(1, S, 10 * SECOND),
         ];
-        assert_eq!(hub.append(session.id, events).unwrap(), 2);
+        let appended = hub.append(session.id, numbered(0, events)).unwrap();
+        assert_eq!((appended.accepted, appended.events), (2, 2));
         assert!(rx.has_changed().unwrap());
         let snapshot = rx.borrow_and_update().clone();
         assert_eq!(snapshot.events, 2);
@@ -215,7 +242,8 @@ mod tests {
     fn clock_times_out_runs_and_publishes_only_changes() {
         let hub = Hub::open(Store::open_in_memory().unwrap()).unwrap();
         let id = hub.create_session(new_session()).unwrap().id;
-        hub.append(id, vec![pass(1, S, 10 * SECOND)]).unwrap();
+        hub.append(id, numbered(0, vec![pass(1, S, 10 * SECOND)]))
+            .unwrap();
         let mut rx = hub.subscribe(id).unwrap();
         rx.mark_unchanged();
 
@@ -242,8 +270,10 @@ mod tests {
         let id = {
             let hub = Hub::open(Store::open(&path).unwrap()).unwrap();
             let id = hub.create_session(new_session()).unwrap().id;
-            hub.append(id, vec![pass(1, S, 10 * SECOND)]).unwrap();
-            hub.append(id, vec![pass(2, G, 70 * SECOND)]).unwrap();
+            hub.append(id, numbered(0, vec![pass(1, S, 10 * SECOND)]))
+                .unwrap();
+            hub.append(id, numbered(1, vec![pass(2, G, 70 * SECOND)]))
+                .unwrap();
             id
         };
         let hub = Hub::open(Store::open(&path).unwrap()).unwrap();
@@ -253,6 +283,11 @@ mod tests {
             snapshot.outcome.runs[0].result,
             RunResult::Time(60 * SECOND)
         );
+        // 再起動の前に届いた番号は、再起動の後も届き済みとして扱う
+        let appended = hub
+            .append(id, numbered(1, vec![pass(2, G, 70 * SECOND)]))
+            .unwrap();
+        assert_eq!((appended.accepted, appended.events), (0, 2));
         drop(hub);
         for suffix in ["", "-wal", "-shm"] {
             let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
@@ -262,6 +297,55 @@ mod tests {
     #[test]
     fn unknown_session_is_not_found() {
         let hub = Hub::open(Store::open_in_memory().unwrap()).unwrap();
-        assert!(matches!(hub.append(42, vec![]), Err(Error::NotFound)));
+        assert!(matches!(
+            hub.append(42, numbered(0, vec![])),
+            Err(Error::NotFound)
+        ));
+    }
+
+    #[test]
+    fn resent_events_are_ignored() {
+        let hub = Hub::open(Store::open_in_memory().unwrap()).unwrap();
+        let id = hub.create_session(new_session()).unwrap().id;
+        let first = vec![pass(1, S, 10 * SECOND), pass(2, G, 70 * SECOND)];
+        let appended = hub.append(id, numbered(0, first)).unwrap();
+        assert_eq!((appended.accepted, appended.events), (2, 2));
+
+        // 番号 1 は届き済みなので、番号 2 だけを追記する
+        let mut rx = hub.subscribe(id).unwrap();
+        rx.mark_unchanged();
+        let resent = vec![pass(2, G, 70 * SECOND), pass(3, S, 80 * SECOND)];
+        let appended = hub.append(id, numbered(1, resent)).unwrap();
+        assert_eq!((appended.accepted, appended.events), (1, 3));
+        assert!(rx.has_changed().unwrap());
+
+        // すべて届き済みなら、何も変わらず配りもしない
+        rx.mark_unchanged();
+        let appended = hub
+            .append(id, numbered(2, vec![pass(3, S, 80 * SECOND)]))
+            .unwrap();
+        assert_eq!((appended.accepted, appended.events), (0, 3));
+        assert!(!rx.has_changed().unwrap());
+
+        // 送り手が違えば、同じ番号でも別のイベント
+        let mut other = numbered(0, vec![pass(4, G, 140 * SECOND)]);
+        other.source = "other".into();
+        let appended = hub.append(id, other).unwrap();
+        assert_eq!((appended.accepted, appended.events), (1, 4));
+    }
+
+    #[test]
+    fn bad_sources_and_numbers_are_rejected() {
+        let hub = Hub::open(Store::open_in_memory().unwrap()).unwrap();
+        let id = hub.create_session(new_session()).unwrap().id;
+        let mut blank = numbered(0, vec![pass(1, S, 10 * SECOND)]);
+        blank.source = " ".into();
+        assert!(matches!(hub.append(id, blank), Err(Error::BadRequest(_))));
+        let too_large = numbered(i64::MAX as u64 + 1, vec![pass(1, S, 10 * SECOND)]);
+        assert!(matches!(
+            hub.append(id, too_large),
+            Err(Error::BadRequest(_))
+        ));
+        assert_eq!(hub.snapshot(id).unwrap().events, 0);
     }
 }

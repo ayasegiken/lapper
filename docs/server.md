@@ -52,13 +52,33 @@ cargo run --release -p lapper-server -- [options]
 | GET | `/api/sessions` | | `SessionInfo[]`（新しい順） |
 | POST | `/api/sessions` | `NewSession` | `SessionInfo`（201） |
 | GET | `/api/sessions/{id}` | | `SessionInfo` |
-| POST | `/api/sessions/{id}/events` | `AppendEvents` | `Appended` |
+| POST | `/api/sessions/{id}/events` | `AppendEvents` | `Appended`（新しく追記した数と、追記後のログの数） |
 | POST | `/api/sessions/{id}/clock` | `ClockSync` | 204 |
 | GET | `/api/sessions/{id}/snapshot` | | `Snapshot` |
 | GET | `/api/sessions/{id}/stream` | | SSE |
 
 - エラーは、セッションがない場合 404、入力の内容がおかしい場合 400 か 422。
 - `/api` 以外のパスでは、画面のファイル（`--web`）を返す。`Cache-Control: no-cache` を付ける。
+
+### イベントの追記と再送
+
+イベントを追記する入力元（**送り手**）は、自分の ID（`source`）を持ち、イベントごとに自分の中で重ならない番号（`seq`）を付ける。
+サーバーは送り手と番号の組で重複を除き、届き済みの組のイベントは無視する（エラーにはしない）。
+
+- 応答が返ってこず届いたか分からないときは、同じ番号のまま送り直せばよい。二重には入らない。
+- 番号は連続していなくても、順番どおりでなくてもよい。0 〜 2^63 - 1。
+- 送り手の ID の例: 計測ボックスなら機器ごとの ID、ブラウザーならページを開くたびに作るランダムな ID（UUID など）と、
+  そのページの中で数える番号。シミュレーター（`--simulate`）は `simulator` で、番号はログの中での位置。
+- 重複の判定はセッションごと。再起動しても、届き済みの組は保存されたログから分かる。
+
+```json
+{
+  "source": "box-1",
+  "events": [
+    { "seq": 41, "event": { "type": "Passage", "id": 41, "gate": 0, "time": 10000000, "source": "Sensor" } }
+  ]
+}
+```
 
 ### SSE
 
@@ -86,7 +106,7 @@ data: {"session":1,"events":52,"outcome":{...}}
 ```bash
 curl -X POST http://localhost:3000/api/sessions/1/events \
   -H 'Content-Type: application/json' \
-  -d '{"events":[{"type":"Enqueue","car":7,"at":0}]}'
+  -d '{"source":"curl","events":[{"seq":0,"event":{"type":"Enqueue","car":7,"at":0}}]}'
 ```
 
 ## TypeScript の型
@@ -105,9 +125,11 @@ cargo test -p lapper-server
 | テーブル | 列 |
 |---|---|
 | `sessions` | `id`、`name`、`config`（`Config` の JSON）、`gate_names`（JSON）、`created_at`（UNIX 時刻、ミリ秒） |
-| `events` | `session_id`、`seq`（セッションの中での連番）、`received_at`（サーバーが受け取った UNIX 時刻、ミリ秒）、`event`（`Event` の JSON） |
+| `events` | `session_id`、`seq`（セッションの中での連番）、`source` と `source_seq`（送り手の ID と、送り手が付けた番号。セッションの中で一意）、`received_at`（サーバーが受け取った UNIX 時刻、ミリ秒）、`event`（`Event` の JSON） |
 
 ジャーナルは WAL。
+
+形式の版を `PRAGMA user_version` に持つ（今は `1`）。版が合わないデータベースは、起動時にエラーにする（変換はしない）。
 
 ## 画面（web/）
 

@@ -5,7 +5,7 @@
 //! | GET | `/api/sessions` | セッションの一覧（新しい順） |
 //! | POST | `/api/sessions` | セッションを作る（[`NewSession`]） |
 //! | GET | `/api/sessions/{id}` | セッションの情報 |
-//! | POST | `/api/sessions/{id}/events` | イベントを追記する（[`AppendEvents`]） |
+//! | POST | `/api/sessions/{id}/events` | イベントを追記する（[`AppendEvents`]）。届き済みの番号のイベントは無視する |
 //! | POST | `/api/sessions/{id}/clock` | コースの時計の時刻を知らせる（[`ClockSync`]） |
 //! | GET | `/api/sessions/{id}/snapshot` | 最新の計算結果（[`Snapshot`]） |
 //! | GET | `/api/sessions/{id}/stream` | 計算結果の SSE。接続時と、結果が変わるたびに `snapshot` イベントを送る |
@@ -77,8 +77,7 @@ async fn append_events(
     UrlPath(id): UrlPath<i64>,
     Json(body): Json<AppendEvents>,
 ) -> Result<Json<Appended>> {
-    let events = hub.append(id, body.events)?;
-    Ok(Json(Appended { events }))
+    Ok(Json(hub.append(id, body)?))
 }
 
 async fn set_clock(
@@ -115,7 +114,9 @@ impl IntoResponse for Error {
         let status = match self {
             Error::NotFound => StatusCode::NOT_FOUND,
             Error::BadRequest(_) => StatusCode::BAD_REQUEST,
-            Error::Db(_) | Error::Json(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Error::DbVersion(_) | Error::Db(_) | Error::Json(_) => {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
         };
         (status, self.to_string()).into_response()
     }
