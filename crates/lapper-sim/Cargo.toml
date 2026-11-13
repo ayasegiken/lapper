@@ -9,3 +9,4 @@ repository.workspace = true
 
 [dependencies]
 lapper-core = { path = "../lapper-core" }
+lapper-protocol = { path = "../lapper-protocol" }

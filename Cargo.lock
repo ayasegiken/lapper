@@ -404,6 +404,7 @@ name = "lapper-sim"
 version = "0.1.0"
 dependencies = [
  "lapper-core",
+ "lapper-protocol",
 ]
 
 [[package]]

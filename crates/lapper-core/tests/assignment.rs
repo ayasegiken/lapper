@@ -41,7 +41,8 @@ impl Log {
     }
 }
 
-fn gymkhana() -> Config {
+/// スタート / 中間 1 / 中間 2 / ゴール、最小区間タイム 5 秒。
+fn two_intermediates() -> Config {
     let mut config = Config::new(Course::new(vec![S, I1, I2, G]).unwrap());
     config.min_segment = vec![s(5.0), s(5.0), s(5.0)];
     config
@@ -60,7 +61,7 @@ fn single_run_with_splits() {
     log.pass(I2, 50.25);
     log.pass(G, 70.125);
 
-    let outcome = compute(&gymkhana(), &log.events, None);
+    let outcome = compute(&two_intermediates(), &log.events, None);
     let run = run_of(&outcome, start);
     assert_eq!(run.car, Some(CarId(7)));
     assert_eq!(run.car_source, CarSource::Queue);
@@ -92,7 +93,7 @@ fn concurrent_runs_are_assigned_in_order() {
     log.pass(I2, 93.5);
     log.pass(G, 114.0);
 
-    let outcome = compute(&gymkhana(), &log.events, None);
+    let outcome = compute(&two_intermediates(), &log.events, None);
     assert_eq!(outcome.runs.len(), 3);
     let cars: Vec<_> = outcome.runs.iter().map(|r| r.car).collect();
     assert_eq!(cars, vec![Some(CarId(1)), Some(CarId(2)), Some(CarId(3))]);
@@ -110,7 +111,7 @@ fn start_without_queued_car_is_unassigned_until_set() {
     log.pass(I2, 50.0);
     log.pass(G, 70.0);
 
-    let outcome = compute(&gymkhana(), &log.events, None);
+    let outcome = compute(&two_intermediates(), &log.events, None);
     let run = run_of(&outcome, start);
     assert_eq!(run.car, None);
     assert_eq!(run.car_source, CarSource::Unassigned);
@@ -120,7 +121,7 @@ fn start_without_queued_car_is_unassigned_until_set() {
         run: RunId(start),
         car: CarChoice::Car(CarId(5)),
     });
-    let outcome = compute(&gymkhana(), &log.events, None);
+    let outcome = compute(&two_intermediates(), &log.events, None);
     let run = run_of(&outcome, start);
     assert_eq!(run.car, Some(CarId(5)));
     assert_eq!(run.car_source, CarSource::Manual);
@@ -138,7 +139,7 @@ fn correcting_a_swapped_start_fixes_the_following_runs() {
     let second = log.pass(S, 40.0);
     let third = log.pass(S, 70.0);
 
-    let outcome = compute(&gymkhana(), &log.events, None);
+    let outcome = compute(&two_intermediates(), &log.events, None);
     let cars: Vec<_> = outcome.runs.iter().map(|r| r.car).collect();
     assert_eq!(cars, vec![Some(CarId(1)), Some(CarId(2)), Some(CarId(3))]);
 
@@ -147,7 +148,7 @@ fn correcting_a_swapped_start_fixes_the_following_runs() {
         run: RunId(first),
         car: CarChoice::Car(CarId(2)),
     });
-    let outcome = compute(&gymkhana(), &log.events, None);
+    let outcome = compute(&two_intermediates(), &log.events, None);
     assert_eq!(run_of(&outcome, first).car, Some(CarId(2)));
     assert_eq!(run_of(&outcome, second).car, Some(CarId(1)));
     assert_eq!(run_of(&outcome, third).car, Some(CarId(3)));
@@ -157,7 +158,7 @@ fn correcting_a_swapped_start_fixes_the_following_runs() {
         run: RunId(second),
         car: CarChoice::Car(CarId(1)),
     });
-    let outcome = compute(&gymkhana(), &log.events, None);
+    let outcome = compute(&two_intermediates(), &log.events, None);
     assert_eq!(run_of(&outcome, second).car, Some(CarId(1)));
     assert_eq!(run_of(&outcome, third).car, Some(CarId(3)));
     assert!(outcome.queue.is_empty());
@@ -175,7 +176,7 @@ fn correcting_only_the_later_run_of_a_swap_needs_both_corrections() {
         run: RunId(second),
         car: CarChoice::Car(CarId(1)),
     });
-    let outcome = compute(&gymkhana(), &log.events, None);
+    let outcome = compute(&two_intermediates(), &log.events, None);
     assert_eq!(run_of(&outcome, first).car, Some(CarId(1)));
     assert_eq!(outcome.queue, vec![CarId(2)]);
 
@@ -183,7 +184,7 @@ fn correcting_only_the_later_run_of_a_swap_needs_both_corrections() {
         run: RunId(first),
         car: CarChoice::Car(CarId(2)),
     });
-    let outcome = compute(&gymkhana(), &log.events, None);
+    let outcome = compute(&two_intermediates(), &log.events, None);
     assert_eq!(run_of(&outcome, first).car, Some(CarId(2)));
     assert_eq!(run_of(&outcome, second).car, Some(CarId(1)));
     assert!(outcome.queue.is_empty());
@@ -202,7 +203,7 @@ fn manual_car_of_a_later_heat_does_not_disturb_earlier_runs() {
         run: RunId(again),
         car: CarChoice::Car(CarId(1)),
     });
-    let outcome = compute(&gymkhana(), &log.events, None);
+    let outcome = compute(&two_intermediates(), &log.events, None);
     assert_eq!(run_of(&outcome, first).car, Some(CarId(1)));
     assert_eq!(run_of(&outcome, second).car, Some(CarId(2)));
     assert_eq!(run_of(&outcome, again).car, Some(CarId(1)));
@@ -352,7 +353,7 @@ fn too_short_segment_is_not_assigned() {
     log.pass(I2, 50.0);
     log.pass(G, 70.0);
 
-    let outcome = compute(&gymkhana(), &log.events, None);
+    let outcome = compute(&two_intermediates(), &log.events, None);
     assert_eq!(
         outcome.passage(noise).unwrap().disposition,
         Disposition::Orphan
@@ -368,7 +369,7 @@ fn missed_intermediate_is_skipped_and_flagged() {
     log.pass(I2, 50.0);
     log.pass(G, 70.0);
 
-    let outcome = compute(&gymkhana(), &log.events, None);
+    let outcome = compute(&two_intermediates(), &log.events, None);
     let run = run_of(&outcome, start);
     assert_eq!(run.status, RunStatus::Finished);
     assert_eq!(run.passes[1], Slot::Missed);
@@ -390,7 +391,7 @@ fn late_course_out_report_reassigns_passages() {
     log.pass(I2, 75.0);
     log.pass(G, 95.0);
 
-    let outcome = compute(&gymkhana(), &log.events, None);
+    let outcome = compute(&two_intermediates(), &log.events, None);
     assert_eq!(
         run_of(&outcome, a).status,
         RunStatus::Finished,
@@ -403,7 +404,7 @@ fn late_course_out_report_reassigns_passages() {
         last_position: 1,
         at: s(100.0),
     });
-    let outcome = compute(&gymkhana(), &log.events, None);
+    let outcome = compute(&two_intermediates(), &log.events, None);
     let run_a = run_of(&outcome, a);
     assert!(matches!(
         run_a.status,
@@ -417,7 +418,7 @@ fn late_course_out_report_reassigns_passages() {
 
     // 報告を取り消すと元に戻る。
     log.push(Event::CancelReport { run: RunId(a) });
-    let outcome = compute(&gymkhana(), &log.events, None);
+    let outcome = compute(&two_intermediates(), &log.events, None);
     assert_eq!(run_of(&outcome, a).status, RunStatus::Finished);
 }
 
@@ -434,7 +435,7 @@ fn reported_run_takes_no_passage_after_report_time() {
     let b = log.pass(S, 35.0);
     let b_i1 = log.pass(I1, 55.0);
 
-    let outcome = compute(&gymkhana(), &log.events, None);
+    let outcome = compute(&two_intermediates(), &log.events, None);
     assert_eq!(
         run_of(&outcome, a).status,
         RunStatus::Off {
@@ -447,7 +448,7 @@ fn reported_run_takes_no_passage_after_report_time() {
 
 #[test]
 fn full_course_pushes_out_the_run_most_behind() {
-    let mut config = gymkhana();
+    let mut config = two_intermediates();
     config.max_on_course = Some(2);
     let mut log = Log::default();
     // 基準になる走行
@@ -479,7 +480,7 @@ fn full_course_pushes_out_the_run_most_behind() {
 
 #[test]
 fn run_exceeding_max_time_is_timed_out() {
-    let mut config = gymkhana();
+    let mut config = two_intermediates();
     config.max_run_time = Some(s(180.0));
     let mut log = Log::default();
     let start = log.pass(S, 10.0);
@@ -583,11 +584,11 @@ fn result_does_not_depend_on_arrival_order_of_passages() {
     log.pass(G, 70.0);
     log.pass(I2, 71.0);
     log.pass(G, 91.0);
-    let in_order = compute(&gymkhana(), &log.events, None);
+    let in_order = compute(&two_intermediates(), &log.events, None);
 
     let mut shuffled = log.events.clone();
     shuffled[2..].reverse();
-    let reordered = compute(&gymkhana(), &shuffled, None);
+    let reordered = compute(&two_intermediates(), &shuffled, None);
     assert_eq!(in_order.runs, reordered.runs);
 }
 
@@ -635,7 +636,7 @@ fn contradiction_reassigns_a_stolen_intermediate() {
     let a_g = log.pass(G, 63.0);
     let b_g = log.pass(G, 81.0);
 
-    let outcome = compute(&gymkhana(), &log.events, None);
+    let outcome = compute(&two_intermediates(), &log.events, None);
     let run_a = run_of(&outcome, a);
     let run_b = run_of(&outcome, b);
     assert_eq!(run_a.passes[3].passage(), Some(a_g));
@@ -664,7 +665,7 @@ fn older_run_skipping_a_missed_gate_is_preferred_over_repair() {
     let b_i2 = log.pass(I2, 59.0);
     let a_g = log.pass(G, 60.0);
 
-    let outcome = compute(&gymkhana(), &log.events, None);
+    let outcome = compute(&two_intermediates(), &log.events, None);
     // 最も古い A が I2 を受け取る（ここは見分けられない）が、A のゴールの矛盾で付け替わる。
     assert_eq!(run_of(&outcome, a).passes[3].passage(), Some(a_g));
     assert_eq!(run_of(&outcome, b).passes[2].passage(), Some(b_i2));
@@ -673,7 +674,7 @@ fn older_run_skipping_a_missed_gate_is_preferred_over_repair() {
 #[test]
 fn strict_mode_assigns_in_order_without_inference() {
     // 推定に使う設定をすべて入れておく（Strict では無視される）
-    let mut config = gymkhana();
+    let mut config = two_intermediates();
     config.max_on_course = Some(1);
     config.max_run_time = Some(s(10.0));
     config.max_segment = vec![Some(s(3.0)); 3];
@@ -719,7 +720,7 @@ fn strict_mode_assigns_in_order_without_inference() {
 
 #[test]
 fn strict_mode_relies_on_course_out_reports() {
-    let mut config = gymkhana();
+    let mut config = two_intermediates();
     config.mode = Mode::Strict;
     let mut log = Log::default();
     log.queue(7, 0.0);

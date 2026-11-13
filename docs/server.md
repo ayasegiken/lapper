@@ -32,14 +32,31 @@ cargo run --release -p lapper-server -- [options]
 | `--listen ADDR` | 待ち受けるアドレス | `0.0.0.0:3000` |
 | `--web DIR` | 画面のビルド結果。なければ API だけを提供する | `web/dist` |
 | `--box ADDR` | 計測ボックスからの接続を TCP で待ち受ける（例: `0.0.0.0:4000`）。通過はいちばん新しいセッションに入る（[box-protocol.md](box-protocol.md)） | なし |
-| `--new-session NAME` | 空のセッションを、プリセットのコースで作る（`gymkhana` / `shared` / `dirt`） | なし |
-| `--strict` | `--new-session` か `--simulate` で作るセッションを、推定をせずそのまま記録するモード（[timing-logic.md](timing-logic.md) の「割り当て方」）にする。セッション名の後ろに `(strict)` が付く | なし |
-| `--simulate NAME` | 新しいセッションを作り、シミュレーターで生成したイベントを流し込む（`gymkhana` / `shared` / `dirt`） | なし |
+| `--simulate NAME` | 新しいセッションを作り、シミュレーターで生成したイベントを流し込む。想定は `busy` / `single` / `long`（README の lapper-sim の `--preset`） | なし |
 | `--faults NAME` | シミュレーションの障害の程度（`none` / `light` / `heavy`） | `light` |
 | `--seed N` | シミュレーションの乱数のシード | `1` |
 | `--speed X` | シミュレーションの再生速度（倍） | `1` |
 
 シミュレーションは、各イベントが届いた時刻になったら追記し、コースの時計を 0.1 秒ごとに知らせる。
+
+### 新しいセッション
+
+`--new-session NAME` で、空のセッションを `NAME` という名前で作る。コースは計測ボックスの入力端子の標準の割り当て
+（0 = スタート、1 = 中間 1、2 = 中間 2、3 = ゴール。[box-protocol.md](box-protocol.md)）で作る。
+
+| オプション | 内容 | 既定値 |
+|---|---|---|
+| `--intermediates N` | 中間計測地点の数（0〜2）。割り当ては変えないので、使わない入力は空けておく（中間 1 つなら入力 2 を使わない） | `2` |
+| `--same-gate` | スタートとゴールが同じ光電管（入力 0）。中間があればその間に入る | なし |
+| `--strict` | 推定をせず、そのまま記録するモード（[timing-logic.md](timing-logic.md) の「割り当て方」） | なし（推定する） |
+| `--min-segment S[,S...]` | 最小区間タイム（秒、小数可）。1 つなら全区間に同じ値、区間の数だけ書けば区間ごと。推定するモードでは割り当ての精度に大きく効くので、最速の車でも下回らない値を設定する | なし（0） |
+| `--max-on-course N` | 同時走行の上限 | なし |
+| `--max-run-time S` | 最大走行時間（秒） | なし |
+
+センサーの遅延の補正はすべて 0（実測した値だけを、あとで設定する）。
+
+`--intermediates` と `--strict` は `--simulate` にも使える。シミュレーションの想定の中間の数を変えるときは、1 走行の標準タイムは変えず、
+減らすときは後ろの区間をまとめ、増やすときは最後の区間を等分する。セッション名の後ろに `/ N intermediates`、`(strict)` が付く。
 
 ## コースの時計
 
@@ -197,7 +214,7 @@ Svelte 5 + TypeScript + Vite。
 画面を変更しながら確かめるときは、サーバーと Vite の開発サーバーを別々に起動する。Vite は `/api` をサーバー（`127.0.0.1:3000`）に中継する。
 
 ```bash
-cargo run -p lapper-server -- --simulate gymkhana --speed 5
+cargo run -p lapper-server -- --simulate busy --speed 5
 ```
 
 ```bash

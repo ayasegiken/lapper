@@ -8,7 +8,7 @@ const USAGE: &str = "\
 usage: lapper-sim [options]
 
 options:
-  --preset NAME   gymkhana | shared | dirt (default: gymkhana)
+  --preset NAME   busy | single | long (default: busy)
   --faults NAME   none | light | heavy (default: light)
   --seed N        random seed (default: 1)
   --sweep N       run seeds 1..=N and print totals
@@ -39,7 +39,7 @@ struct Args {
 
 fn parse_args() -> Result<Args, String> {
     let mut args = Args {
-        preset: "gymkhana".into(),
+        preset: "busy".into(),
         faults: "light".into(),
         seed: 1,
         sweep: None,
