@@ -30,7 +30,7 @@ mod event;
 mod outcome;
 mod types;
 
-pub use config::{Config, GateConfig};
+pub use config::{Config, GateConfig, Mode};
 pub use course::{Course, CourseError};
 pub use engine::compute;
 pub use event::{CarChoice, Event, Passage, PassageSource, Penalty};

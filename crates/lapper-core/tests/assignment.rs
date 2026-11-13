@@ -302,6 +302,18 @@ fn sensor_delay_is_corrected_per_gate() {
 
     let outcome = compute(&config, &log.events, None);
     assert_eq!(run_of(&outcome, start).total(), Some(s(60.0)));
+
+    // 手動の通過はセンサーを通らないので、遅延を引かない
+    let mut log = Log::default();
+    let start = log.pass(S, 10.0);
+    log.push(Event::Passage(Passage {
+        id: PassageId(99),
+        gate: G,
+        time: s(70.0),
+        source: PassageSource::Manual,
+    }));
+    let outcome = compute(&config, &log.events, None);
+    assert_eq!(run_of(&outcome, start).total(), Some(s(60.0)));
 }
 
 #[test]
@@ -656,4 +668,88 @@ fn older_run_skipping_a_missed_gate_is_preferred_over_repair() {
     // 最も古い A が I2 を受け取る（ここは見分けられない）が、A のゴールの矛盾で付け替わる。
     assert_eq!(run_of(&outcome, a).passes[3].passage(), Some(a_g));
     assert_eq!(run_of(&outcome, b).passes[2].passage(), Some(b_i2));
+}
+
+#[test]
+fn strict_mode_assigns_in_order_without_inference() {
+    // 推定に使う設定をすべて入れておく（Strict では無視される）
+    let mut config = gymkhana();
+    config.max_on_course = Some(1);
+    config.max_run_time = Some(s(10.0));
+    config.max_segment = vec![Some(s(3.0)); 3];
+    let mut log = Log::default();
+    log.queue(7, 0.0);
+    log.queue(8, 0.0);
+    let a = log.pass(S, 10.0);
+    // 最小区間タイム（5 秒）より速い中間
+    log.pass(I1, 12.0);
+    // 同時走行の上限（1 台）を超えるスタート
+    let b = log.pass(S, 13.0);
+    log.pass(I2, 14.0);
+    log.pass(G, 30.0);
+
+    // 推定ありでは、速すぎる中間は割り当てず、2 台目のスタートで 1 台目を押し出す
+    let auto = compute(&config, &log.events, Some(s(100.0)));
+    assert_eq!(auto.passages[1].disposition, Disposition::Orphan);
+    assert!(matches!(
+        run_of(&auto, a).status,
+        RunStatus::Off {
+            cause: OffCause::PushedOut { .. },
+            ..
+        }
+    ));
+
+    // そのまま記録では、届いた順にいちばん古い走行へ割り当て、時間切れにもしない
+    config.mode = Mode::Strict;
+    let strict = compute(&config, &log.events, Some(s(100.0)));
+    let run_a = run_of(&strict, a);
+    assert_eq!(run_a.car, Some(CarId(7)));
+    assert_eq!(run_a.status, RunStatus::Finished);
+    assert_eq!(run_a.result, RunResult::Time(s(20.0)));
+    let run_b = run_of(&strict, b);
+    assert_eq!(run_b.car, Some(CarId(8)));
+    assert_eq!(run_b.status, RunStatus::Running);
+    assert!(
+        strict
+            .passages
+            .iter()
+            .all(|p| matches!(p.disposition, Disposition::Assigned { .. }))
+    );
+}
+
+#[test]
+fn strict_mode_relies_on_course_out_reports() {
+    let mut config = gymkhana();
+    config.mode = Mode::Strict;
+    let mut log = Log::default();
+    log.queue(7, 0.0);
+    log.queue(8, 0.0);
+    let a = log.pass(S, 10.0);
+    log.pass(I1, 20.0);
+    let b = log.pass(S, 25.0);
+    log.pass(I1, 35.0);
+    // #7 は中間 1 の後でコースアウトした。報告がないと、#8 の中間 2 とゴールを受け取ってしまう
+    log.pass(I2, 45.0);
+    log.pass(G, 55.0);
+    let outcome = compute(&config, &log.events, None);
+    assert_eq!(run_of(&outcome, a).status, RunStatus::Finished);
+    assert_eq!(run_of(&outcome, b).status, RunStatus::Running);
+
+    // 計時担当が報告すると（あとからでも）、#8 の通過として計算し直される
+    log.push(Event::ReportOff {
+        run: RunId(a),
+        last_position: 1,
+        at: s(60.0),
+    });
+    let outcome = compute(&config, &log.events, None);
+    assert!(matches!(
+        run_of(&outcome, a).status,
+        RunStatus::Off {
+            cause: OffCause::Reported,
+            ..
+        }
+    ));
+    let run_b = run_of(&outcome, b);
+    assert_eq!(run_b.status, RunStatus::Finished);
+    assert_eq!(run_b.result, RunResult::Time(s(30.0)));
 }

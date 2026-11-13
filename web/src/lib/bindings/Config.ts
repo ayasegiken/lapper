@@ -2,11 +2,16 @@
 import type { Course } from "./Course";
 import type { GateConfig } from "./GateConfig";
 import type { GateId } from "./GateId";
+import type { Mode } from "./Mode";
 
 /**
  * 計測ロジックの設定。
  */
 export type Config = { course: Course, 
+/**
+ * 割り当て方。保存された設定にない場合は `Auto`。
+ */
+mode: Mode, 
 /**
  * ゲートごとの設定。ないゲートは `default_gate` を使う。
  */

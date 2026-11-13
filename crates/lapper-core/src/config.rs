@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 use crate::course::Course;
@@ -23,12 +24,31 @@ impl Default for GateConfig {
     }
 }
 
+/// 通過の割り当て方。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+pub enum Mode {
+    /// 推定を使う（既定）。最小区間タイムでの絞り込みと付け替え、同時走行の上限による押し出し、
+    /// 最大区間タイムと最大走行時間による時間切れで、反応の抜けや誤反応、コースアウトをなるべく自動で扱う。
+    /// 光電管を立てて放置する練習会向け。
+    #[default]
+    Auto,
+    /// 推定をせず、通過を順番どおりにそのまま割り当てる。最小区間タイム、最大区間タイム、同時走行の上限、
+    /// 最大走行時間は使わない（設定してあっても無視する）。二重反応の無視、遅延の補正、目印は使う。
+    /// 計時担当が張り付き、誤反応は無効に、コースアウトは報告で、人が直す大会向け。
+    Strict,
+}
+
 /// 計測ロジックの設定。
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Config {
     pub course: Course,
+    /// 割り当て方。保存された設定にない場合は `Auto`。
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub mode: Mode,
     /// ゲートごとの設定。ないゲートは `default_gate` を使う。
     pub gates: BTreeMap<GateId, GateConfig>,
     pub default_gate: GateConfig,
@@ -57,6 +77,7 @@ impl Config {
         let segments = course.segments();
         Config {
             course,
+            mode: Mode::Auto,
             gates: BTreeMap::new(),
             default_gate: GateConfig::default(),
             min_segment: vec![0; segments],
@@ -66,6 +87,23 @@ impl Config {
             pylon_penalty: 5 * SECOND,
             slow_segment_percent: Some(150),
             fast_segment_percent: Some(80),
+        }
+    }
+
+    /// 計算に使う設定。`Strict` なら、推定に使う項目を外したもの。
+    pub fn effective(&self) -> Cow<'_, Config> {
+        match self.mode {
+            Mode::Auto => Cow::Borrowed(self),
+            Mode::Strict => {
+                let segments = self.course.segments();
+                Cow::Owned(Config {
+                    min_segment: vec![0; segments],
+                    max_segment: vec![None; segments],
+                    max_on_course: None,
+                    max_run_time: None,
+                    ..self.clone()
+                })
+            }
         }
     }
 

@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 
+use lapper_core::{Config, Mode};
 use lapper_server::types::NewSession;
 use lapper_server::{Hub, Store, api, feed, link};
 use lapper_sim::{Faults, PRESETS, Scenario, generate};
@@ -17,6 +18,8 @@ options:
                      their passages go to the newest session
   --new-session NAME create an empty session with a preset course:
                      gymkhana | shared | dirt
+  --strict           record passages in order without inference
+                     (for --new-session and --simulate)
 
 simulation (creates a new session and feeds it in real time):
   --simulate NAME    gymkhana | shared | dirt
@@ -31,6 +34,7 @@ struct Args {
     web: PathBuf,
     box_addr: Option<String>,
     new_session: Option<String>,
+    strict: bool,
     simulate: Option<String>,
     faults: String,
     seed: u64,
@@ -44,6 +48,7 @@ fn parse_args() -> Result<Args, String> {
         web: "web/dist".into(),
         box_addr: None,
         new_session: None,
+        strict: false,
         simulate: None,
         faults: "light".into(),
         seed: 1,
@@ -58,6 +63,7 @@ fn parse_args() -> Result<Args, String> {
             "--web" => args.web = value()?.into(),
             "--box" => args.box_addr = Some(value()?),
             "--new-session" => args.new_session = Some(value()?),
+            "--strict" => args.strict = true,
             "--simulate" => args.simulate = Some(value()?),
             "--faults" => args.faults = value()?,
             "--seed" => args.seed = number(&value()?)?,
@@ -71,6 +77,9 @@ fn parse_args() -> Result<Args, String> {
     }
     if args.new_session.is_some() && args.simulate.is_some() {
         return Err("use either --new-session or --simulate".into());
+    }
+    if args.strict && args.new_session.is_none() && args.simulate.is_none() {
+        return Err("--strict needs --new-session or --simulate".into());
     }
     Ok(args)
 }
@@ -111,12 +120,12 @@ async fn run(args: Args) -> Result<(), String> {
         ))?;
         let session = hub
             .create_session(NewSession {
-                name: preset.clone(),
-                config: scenario.config(),
+                name: session_name(preset, args.strict),
+                config: config(scenario.config(), args.strict),
                 gate_names: None,
             })
             .map_err(|e| e.to_string())?;
-        println!("created session {} ({preset})", session.id);
+        println!("created session {}: {}", session.id, session.name);
     }
 
     if let Some(addr) = &args.box_addr {
@@ -139,8 +148,11 @@ async fn run(args: Args) -> Result<(), String> {
         let sim = generate(&scenario, args.seed);
         let session = hub
             .create_session(NewSession {
-                name: format!("simulation {preset} / {} / seed {}", args.faults, args.seed),
-                config: sim.config.clone(),
+                name: session_name(
+                    &format!("simulation {preset} / {} / seed {}", args.faults, args.seed),
+                    args.strict,
+                ),
+                config: config(sim.config.clone(), args.strict),
                 gate_names: None,
             })
             .map_err(|e| e.to_string())?;
@@ -173,4 +185,21 @@ async fn run(args: Args) -> Result<(), String> {
         .map_err(|e| format!("cannot listen on {}: {e}", args.listen))?;
     println!("listening on http://{}", args.listen);
     axum::serve(listener, app).await.map_err(|e| e.to_string())
+}
+
+/// セッションの名前。そのまま記録するモードなら、それと分かるようにする。
+fn session_name(name: &str, strict: bool) -> String {
+    if strict {
+        format!("{name} (strict)")
+    } else {
+        name.to_string()
+    }
+}
+
+/// セッションの設定。`strict` なら、推定をせずそのまま記録するモードにする。
+fn config(mut config: Config, strict: bool) -> Config {
+    if strict {
+        config.mode = Mode::Strict;
+    }
+    config
 }

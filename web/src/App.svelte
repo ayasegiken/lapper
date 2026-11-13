@@ -12,7 +12,7 @@
     { hash: '#passages', label: '通過記録' },
   ]
   // 「操作する」のときだけ出す
-  const manualView = { hash: '#manual', label: '手動計時' }
+  const manualView = { hash: '#manual', label: '計時' }
 
   let sessions = $state<SessionInfo[]>([])
   let selectedId = $state<number | null>(null)
@@ -85,6 +85,9 @@
       {/each}
     </select>
   {/if}
+  {#if session?.config.mode === 'Strict'}
+    <span class="strict" title="推定をせず、通過を届いた順にそのまま割り当てるモード">そのまま記録</span>
+  {/if}
   <label class="operating">
     <input type="checkbox" bind:checked={operating} />
     操作する
@@ -125,7 +128,7 @@
     {#if operating}
       <ManualView {session} {snapshot} />
     {:else}
-      <p class="message">手動計時は、ヘッダーの「操作する」を入れると使えます。</p>
+      <p class="message">計時の画面は、ヘッダーの「操作する」を入れると使えます。</p>
     {/if}
   {:else}
     <QueueView {session} {snapshot} {operating} />
@@ -148,6 +151,12 @@
   select {
     max-width: 100%;
     font: inherit;
+  }
+  .strict {
+    padding: 0 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.875rem;
+    background: var(--warn-surface);
   }
   .operating {
     display: flex;
