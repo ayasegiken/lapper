@@ -13,20 +13,28 @@ pub const MILLISECOND: Micros = 1_000;
 
 /// 光電管（計測ボックスの入力チャンネル）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct GateId(pub u16);
 
 /// 通過記録の ID。計測ボックスの連番などから作る、ログ全体で一意な値。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct PassageId(pub u64);
 
 /// 車（ゼッケン）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct CarId(pub u32);
 
 /// 走行の ID。走行を始めたスタートの通過記録の ID をそのまま使う。
 ///
 /// 割り当てを計算し直しても、同じスタートの通過から始まる走行は同じ ID になる。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct RunId(pub PassageId);
 
 impl fmt::Display for GateId {

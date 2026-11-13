@@ -14,6 +14,8 @@ pub struct Simulation {
     pub config: Config,
     /// 計測ロジックに届いた順のログ。
     pub log: Vec<Event>,
+    /// `log` の各イベントが届いた時刻（コースの時計）。サーバーに実際の時間の流れで送るときに使う。
+    pub arrivals: Vec<Micros>,
     /// 実際の走行。スタート順。
     pub truth: Vec<TruthRun>,
     /// セッションの終わりの時刻（最後のイベントから最大走行時間が過ぎた後）。
@@ -325,9 +327,11 @@ pub fn generate(scenario: &Scenario, seed: u64) -> Simulation {
     // 走行中のまま残る走行がないように、最大走行時間が過ぎるまで待つ
     let end =
         arrivals.last().map_or(0, |a| a.at).max(session_end) + config.max_run_time.unwrap_or(0);
+    let (arrivals, log) = arrivals.into_iter().map(|a| (a.at, a.event)).unzip();
     Simulation {
         config,
-        log: arrivals.into_iter().map(|a| a.event).collect(),
+        log,
+        arrivals,
         truth,
         end,
     }

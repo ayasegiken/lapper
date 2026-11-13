@@ -1,2 +1,6 @@
 .DS_Store
 /target/
+
+# lapper-server の既定のデータベース
+/lapper.db
+/lapper.db-*

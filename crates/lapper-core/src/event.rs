@@ -4,6 +4,12 @@ use crate::types::{CarId, GateId, Micros, PassageId, RunId};
 ///
 /// 訂正も新しいイベントとして追記する。同じ対象への訂正は、ログで後にあるものが優先される。
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(tag = "type")
+)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum Event {
     /// 光電管の通過記録（または手動で入れた通過）。
     Passage(Passage),
@@ -33,6 +39,8 @@ pub enum Event {
 
 /// 通過記録。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Passage {
     pub id: PassageId,
     pub gate: GateId,
@@ -42,6 +50,8 @@ pub struct Passage {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum PassageSource {
     Sensor,
     /// 運営が手で入れた通過（光電管が反応しなかったときなど）。
@@ -50,6 +60,12 @@ pub enum PassageSource {
 
 /// 走行の車の指定。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(tag = "type", content = "car")
+)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub enum CarChoice {
     /// 出走待ちの列から自動で割り当てる（指定の取り消し）。
     Auto,
@@ -61,6 +77,8 @@ pub enum CarChoice {
 
 /// ペナルティ。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 pub struct Penalty {
     /// パイロンタッチの回数。
     pub pylons: u32,
