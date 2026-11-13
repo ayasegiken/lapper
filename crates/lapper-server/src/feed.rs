@@ -41,6 +41,8 @@ pub async fn feed(hub: Arc<Hub>, session: i64, sim: Simulation, speed: f64) -> R
                     seq: i as u64,
                     event: sim.log[i].clone(),
                     at_now: false,
+                    new_id: false,
+                    age_ms: 0,
                 })
                 .collect();
             hub.append(

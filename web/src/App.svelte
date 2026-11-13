@@ -5,11 +5,14 @@
   import type { Snapshot } from './lib/bindings/Snapshot'
   import QueueView from './lib/QueueView.svelte'
   import PassagesView from './lib/PassagesView.svelte'
+  import ManualView from './lib/ManualView.svelte'
 
   const views = [
     { hash: '#queue', label: '出走待ち' },
     { hash: '#passages', label: '通過記録' },
   ]
+  // 「操作する」のときだけ出す
+  const manualView = { hash: '#manual', label: '手動計時' }
 
   let sessions = $state<SessionInfo[]>([])
   let selectedId = $state<number | null>(null)
@@ -104,7 +107,7 @@
 {/if}
 
 <nav>
-  {#each views as view (view.hash)}
+  {#each operating ? [...views, manualView] : views as view (view.hash)}
     <a href={view.hash} class:active={hash === view.hash}>{view.label}</a>
   {/each}
 </nav>
@@ -118,6 +121,12 @@
     <p class="message">読み込んでいます…</p>
   {:else if hash === '#passages'}
     <PassagesView {session} {snapshot} {operating} />
+  {:else if hash === '#manual'}
+    {#if operating}
+      <ManualView {session} {snapshot} />
+    {:else}
+      <p class="message">手動計時は、ヘッダーの「操作する」を入れると使えます。</p>
+    {/if}
   {:else}
     <QueueView {session} {snapshot} {operating} />
   {/if}

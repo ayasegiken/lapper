@@ -3,7 +3,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use lapper_server::types::NewSession;
-use lapper_server::{Hub, Store, api, feed};
+use lapper_server::{Hub, Store, api, feed, link};
 use lapper_sim::{Faults, PRESETS, Scenario, generate};
 
 const USAGE: &str = "\
@@ -13,6 +13,10 @@ options:
   --db PATH          SQLite database file (default: lapper.db)
   --listen ADDR      address to listen on (default: 0.0.0.0:3000)
   --web DIR          built web pages to serve (default: web/dist)
+  --box ADDR         accept timing boxes over TCP (e.g. 0.0.0.0:4000);
+                     their passages go to the newest session
+  --new-session NAME create an empty session with a preset course:
+                     gymkhana | shared | dirt
 
 simulation (creates a new session and feeds it in real time):
   --simulate NAME    gymkhana | shared | dirt
@@ -25,6 +29,8 @@ struct Args {
     db: PathBuf,
     listen: String,
     web: PathBuf,
+    box_addr: Option<String>,
+    new_session: Option<String>,
     simulate: Option<String>,
     faults: String,
     seed: u64,
@@ -36,6 +42,8 @@ fn parse_args() -> Result<Args, String> {
         db: "lapper.db".into(),
         listen: "0.0.0.0:3000".into(),
         web: "web/dist".into(),
+        box_addr: None,
+        new_session: None,
         simulate: None,
         faults: "light".into(),
         seed: 1,
@@ -48,6 +56,8 @@ fn parse_args() -> Result<Args, String> {
             "--db" => args.db = value()?.into(),
             "--listen" => args.listen = value()?,
             "--web" => args.web = value()?.into(),
+            "--box" => args.box_addr = Some(value()?),
+            "--new-session" => args.new_session = Some(value()?),
             "--simulate" => args.simulate = Some(value()?),
             "--faults" => args.faults = value()?,
             "--seed" => args.seed = number(&value()?)?,
@@ -58,6 +68,9 @@ fn parse_args() -> Result<Args, String> {
     }
     if args.speed <= 0.0 {
         return Err("--speed must be positive".into());
+    }
+    if args.new_session.is_some() && args.simulate.is_some() {
+        return Err("use either --new-session or --simulate".into());
     }
     Ok(args)
 }
@@ -90,6 +103,29 @@ async fn main() -> ExitCode {
 async fn run(args: Args) -> Result<(), String> {
     let store = Store::open(&args.db).map_err(|e| e.to_string())?;
     let hub = Arc::new(Hub::open(store).map_err(|e| e.to_string())?);
+
+    if let Some(preset) = &args.new_session {
+        let scenario = Scenario::preset(preset, Faults::NONE).ok_or(format!(
+            "unknown preset: {preset} ({})",
+            PRESETS.join(" | ")
+        ))?;
+        let session = hub
+            .create_session(NewSession {
+                name: preset.clone(),
+                config: scenario.config(),
+                gate_names: None,
+            })
+            .map_err(|e| e.to_string())?;
+        println!("created session {} ({preset})", session.id);
+    }
+
+    if let Some(addr) = &args.box_addr {
+        let listener = tokio::net::TcpListener::bind(addr)
+            .await
+            .map_err(|e| format!("cannot listen on {addr}: {e}"))?;
+        println!("accepting timing boxes on {addr}");
+        tokio::spawn(link::serve(hub.clone(), listener));
+    }
 
     if let Some(preset) = &args.simulate {
         let faults = Faults::by_name(&args.faults).ok_or(format!(

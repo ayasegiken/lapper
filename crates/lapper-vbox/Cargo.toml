@@ -1,0 +1,14 @@
+[package]
+name = "lapper-vbox"
+description = "Virtual lapper timing box: sends passages from key presses over the box protocol"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+crossterm = "0.29.0"
+lapper-core = { path = "../lapper-core" }
+lapper-protocol = { path = "../lapper-protocol" }
+tokio = { version = "1.54.1", features = ["rt-multi-thread", "macros", "net", "io-util", "time", "sync"] }

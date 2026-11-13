@@ -6,15 +6,22 @@
 import type { AppendEvents } from './bindings/AppendEvents'
 import type { Event } from './bindings/Event'
 
-/** 送る操作。`atNow` なら、イベントの `at` をサーバーが今のコースの時刻で置き換える。 */
+/**
+ * 送る操作。
+ * - `atNow`: イベントの時刻（`at`、通過記録なら `time`）を、サーバーが操作した時点のコースの時刻で置き換える。
+ * - `newId`: 通過記録の ID を、サーバーがまだ使われていない ID で置き換える。
+ */
 export interface Operation {
   event: Event
   atNow?: boolean
+  newId?: boolean
 }
 
 interface Request {
   session: number
   body: AppendEvents
+  /** 操作した時刻（`performance.now()`）。送り直したときに、操作してからの時間をサーバーに伝える。 */
+  createdAt: number
 }
 
 type Result = { type: 'ok' } | { type: 'retry' } | { type: 'rejected'; message: string }
@@ -40,8 +47,14 @@ class Outbox {
       seq: this.#seq++,
       event: op.event,
       at_now: op.atNow ?? false,
+      new_id: op.newId ?? false,
+      age_ms: 0,
     }))
-    this.#queue.push({ session, body: { source: this.#source, events } })
+    this.#queue.push({
+      session,
+      body: { source: this.#source, events },
+      createdAt: performance.now(),
+    })
     this.pending = this.#queue.length
     this.error = null
     if (!this.#running) {
@@ -77,7 +90,11 @@ class Outbox {
   }
 }
 
-async function post({ session, body }: Request): Promise<Result> {
+async function post({ session, body, createdAt }: Request): Promise<Result> {
+  const age = Math.round(performance.now() - createdAt)
+  for (const event of body.events) {
+    event.age_ms = age
+  }
   let response: Response
   try {
     response = await fetch(`/api/sessions/${session}/events`, {

@@ -1,0 +1,13 @@
+[package]
+name = "lapper-protocol"
+description = "Messages between lapper timing boxes and the server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+lapper-core = { path = "../lapper-core" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
