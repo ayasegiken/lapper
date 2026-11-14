@@ -1,6 +1,12 @@
 [workspace]
 resolver = "3"
-members = ["crates/lapper-core", "crates/lapper-server", "crates/lapper-sim"]
+members = [
+    "crates/lapper-core",
+    "crates/lapper-protocol",
+    "crates/lapper-server",
+    "crates/lapper-sim",
+    "crates/lapper-vbox",
+]
 
 [workspace.package]
 version = "0.1.0"

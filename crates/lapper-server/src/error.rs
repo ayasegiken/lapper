@@ -6,6 +6,8 @@ pub enum Error {
     NotFound,
     /// 入力の内容がおかしい。
     BadRequest(String),
+    /// データベースの形式の版が、このサーバーと合わない。
+    DbVersion(i64),
     Db(rusqlite::Error),
     Json(serde_json::Error),
 }
@@ -17,6 +19,11 @@ impl fmt::Display for Error {
         match self {
             Error::NotFound => write!(f, "not found"),
             Error::BadRequest(message) => write!(f, "bad request: {message}"),
+            Error::DbVersion(version) => write!(
+                f,
+                "unsupported database version {version} (expected {}); use a new database file",
+                crate::store::VERSION
+            ),
             Error::Db(e) => write!(f, "database error: {e}"),
             Error::Json(e) => write!(f, "json error: {e}"),
         }

@@ -11,9 +11,13 @@ use lapper_sim::Simulation;
 
 use crate::error::Result;
 use crate::hub::Hub;
+use crate::types::{AppendEvents, NumberedEvent};
 
 /// コースの時計を知らせる間隔。
 const TICK: Duration = Duration::from_millis(100);
+
+/// 追記するときの送り手の ID。
+const SOURCE: &str = "simulator";
 
 /// `sim` を `speed` 倍の速さでセッション `session` に流し込む。セッションの終わりまで進んだら戻る。
 pub async fn feed(hub: Arc<Hub>, session: i64, sim: Simulation, speed: f64) -> Result<()> {
@@ -31,7 +35,23 @@ pub async fn feed(hub: Arc<Hub>, session: i64, sim: Simulation, speed: f64) -> R
             .take_while(|&&at| at <= now)
             .count();
         if due > 0 {
-            hub.append(session, sim.log[next..next + due].to_vec())?;
+            // 番号はログの中での位置
+            let events = (next..next + due)
+                .map(|i| NumberedEvent {
+                    seq: i as u64,
+                    event: sim.log[i].clone(),
+                    at_now: false,
+                    new_id: false,
+                    age_ms: 0,
+                })
+                .collect();
+            hub.append(
+                session,
+                AppendEvents {
+                    source: SOURCE.into(),
+                    events,
+                },
+            )?;
             next += due;
         }
         hub.set_clock(session, now)?;

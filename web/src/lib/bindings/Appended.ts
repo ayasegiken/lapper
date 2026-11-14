@@ -5,6 +5,10 @@
  */
 export type Appended = { 
 /**
+ * 新しく追記したイベントの数。届き済みの番号のイベントは数えない。
+ */
+accepted: number, 
+/**
  * 追記後のログのイベントの数。
  */
 events: number, };

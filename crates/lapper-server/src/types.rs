@@ -31,16 +31,46 @@ pub struct NewSession {
 }
 
 /// イベントを追記する要求。
+///
+/// 送り手は、イベントごとに自分の中で重ならない番号を付ける。サーバーは送り手と番号の組で重複を除くので、
+/// 届いたか分からないときは、同じ番号のまま送り直せばよい。
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct AppendEvents {
-    pub events: Vec<Event>,
+    /// 送り手の ID。計測ボックスなら機器ごとの ID、ブラウザーならページを開くたびに作るランダムな ID。
+    pub source: String,
+    pub events: Vec<NumberedEvent>,
+}
+
+/// 送り手が番号を付けたイベント。
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct NumberedEvent {
+    /// 送り手の中での番号（0 〜 2^63 - 1）。連続していなくてもよい。
+    pub seq: u64,
+    pub event: Event,
+    /// `true` なら、イベントの時刻（`Enqueue`、`Dequeue`、`ReportOff` の `at`、`Passage` の `time`）を、
+    /// サーバーが今のコースの時刻で置き換える。コースの時計を知らない送り手（ブラウザー）が、
+    /// 運営の操作や手動の通過を「今」のこととして送るときに使う。JSON では省略できる（省略すると `false`）。
+    #[serde(default)]
+    pub at_now: bool,
+    /// `true` なら、`Passage` の `id` を、サーバーがまだ使われていない ID で置き換える。
+    /// 計測ボックスの入力や手動の通過のように、送り手がセッションの中で一意な ID を決められないときに使う。
+    /// JSON では省略できる（省略すると `false`）。
+    #[serde(default)]
+    pub new_id: bool,
+    /// `at_now` のとき、操作してからこの要求を送るまでにかかった時間（ミリ秒）。サーバーは今の時刻からこの分を戻す。
+    /// 送り直したときに、送り直した時刻ではなく操作した時刻にするため。JSON では省略できる（省略すると 0）。
+    #[serde(default)]
+    pub age_ms: u32,
 }
 
 /// 追記の結果。
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Appended {
+    /// 新しく追記したイベントの数。届き済みの番号のイベントは数えない。
+    pub accepted: usize,
     /// 追記後のログのイベントの数。
     pub events: usize,
 }

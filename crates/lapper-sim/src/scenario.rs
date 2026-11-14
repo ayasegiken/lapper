@@ -1,4 +1,5 @@
 use lapper_core::{Config, Course, GateConfig, GateId, MILLISECOND, Micros, SECOND};
+use lapper_protocol::inputs;
 
 /// シミュレーションの条件。
 #[derive(Debug, Clone)]
@@ -94,14 +95,15 @@ impl Faults {
     }
 }
 
-pub const PRESETS: [&str; 3] = ["gymkhana", "shared", "dirt"];
+/// シミュレーションの想定の名前。競技の種類ではなく、コースの形と運営の状況で分ける。
+pub const PRESETS: [&str; 3] = ["busy", "single", "long"];
 
 impl Scenario {
     pub fn preset(name: &str, faults: Faults) -> Option<Scenario> {
-        let (s, i1, i2, g) = (GateId(0), GateId(1), GateId(2), GateId(3));
+        let (i1, g) = (inputs::intermediate(1), inputs::FINISH);
         let base = Scenario {
-            name: "gymkhana",
-            course: vec![s, i1, i2, g],
+            name: "busy",
+            course: course(2, false),
             segment_times: vec![20.0, 25.0, 20.0],
             min_segment_ratio: 0.6,
             max_segment_ratio: None,
@@ -116,12 +118,12 @@ impl Scenario {
             faults,
         };
         match name {
-            // スタート / 中間×2 / ゴール、最大 4 台の同時走行
-            "gymkhana" => Some(base),
-            // スタートとゴールが同じ光電管で、1 台ずつ走る練習会
-            "shared" => Some(Scenario {
-                name: "shared",
-                course: vec![s, s],
+            // 短いコース（スタート / 中間×2 / ゴール）に、最大 4 台が続けて走る
+            "busy" => Some(base),
+            // スタートとゴールが同じ光電管で、1 台ずつ走る
+            "single" => Some(Scenario {
+                name: "single",
+                course: course(0, true),
                 segment_times: vec![60.0],
                 min_segment_ratio: 0.7,
                 max_segment_ratio: Some(1.5),
@@ -131,10 +133,10 @@ impl Scenario {
                 delays: vec![],
                 ..base
             }),
-            // スタートとゴールが離れた長いコース、最大 2 台
-            "dirt" => Some(Scenario {
-                name: "dirt",
-                course: vec![s, i1, g],
+            // スタートとゴールが離れた長いコース（中間×1）に、最大 2 台
+            "long" => Some(Scenario {
+                name: "long",
+                course: course(1, false),
                 segment_times: vec![55.0, 65.0],
                 cars: 40,
                 start_interval: 45.0,
@@ -144,6 +146,33 @@ impl Scenario {
             }),
             _ => None,
         }
+    }
+
+    /// 中間計測地点の数を `n`（[`inputs::MAX_INTERMEDIATES`] まで）にしたシナリオ。
+    ///
+    /// 入力端子（ゲート）は標準の割り当て（[`inputs`]）のまま。
+    /// 1 走行の標準タイムは変えず、中間を減らすときは後ろの区間をまとめ、増やすときは最後の区間を等分する。
+    pub fn with_intermediates(mut self, n: usize) -> Scenario {
+        assert!(
+            n <= inputs::MAX_INTERMEDIATES,
+            "too many intermediates: {n}"
+        );
+        let same_gate = self.course[0] == self.course[self.course.len() - 1];
+        let mut times = self.segment_times;
+        while times.len() > n + 1 {
+            let last = times.pop().expect("more than one segment");
+            *times.last_mut().expect("at least one segment") += last;
+        }
+        if times.len() < n + 1 {
+            let last = times.pop().expect("at least one segment");
+            let parts = n + 1 - times.len();
+            times.extend(std::iter::repeat_n(last / parts as f64, parts));
+        }
+        self.course = course(n, same_gate);
+        self.segment_times = times;
+        let course = &self.course;
+        self.delays.retain(|(gate, _)| course.contains(gate));
+        self
     }
 
     /// 1 走行の標準タイム（秒）。
@@ -186,6 +215,11 @@ impl Scenario {
             .find(|(g, _)| *g == gate)
             .map_or(0, |&(_, d)| d)
     }
+}
+
+/// 標準の入力端子の割り当てでのコース（ゲートの並び）。
+fn course(intermediates: usize, same_gate: bool) -> Vec<GateId> {
+    inputs::course(intermediates, same_gate).gates().to_vec()
 }
 
 pub fn seconds(t: f64) -> Micros {

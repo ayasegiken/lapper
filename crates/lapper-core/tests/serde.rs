@@ -69,9 +69,20 @@ fn config_round_trips_through_json() {
         },
     );
     config.max_on_course = Some(4);
+    config.mode = Mode::Strict;
     let text = serde_json::to_string(&config).unwrap();
+    assert!(text.contains(r#""mode":"Strict""#), "{text}");
     let back: Config = serde_json::from_str(&text).unwrap();
     assert_eq!(back, config);
+}
+
+#[test]
+fn config_without_mode_is_auto() {
+    // モードを足す前に保存された設定
+    let mut value = serde_json::to_value(Config::new(Course::new(vec![S, G]).unwrap())).unwrap();
+    value.as_object_mut().unwrap().remove("mode");
+    let config: Config = serde_json::from_value(value).unwrap();
+    assert_eq!(config.mode, Mode::Auto);
 }
 
 #[test]

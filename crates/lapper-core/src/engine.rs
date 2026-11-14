@@ -11,7 +11,7 @@
 use std::collections::BTreeMap;
 
 use crate::config::Config;
-use crate::event::{CarChoice, Event, PassageSource, Penalty};
+use crate::event::{CarChoice, Event, Passage, PassageSource, Penalty};
 use crate::outcome::{
     CarSource, Disposition, OffCause, Outcome, PassageReport, Run, RunFlag, RunResult, RunStatus,
     Slot, Warning,
@@ -21,7 +21,10 @@ use crate::types::{CarId, GateId, Micros, PassageId, RunId};
 /// ログから割り当てを計算する。
 ///
 /// `now` を渡すと、その時刻までに最大走行時間を超えた走行や、報告済みの走行を外した状態にする。
+/// 割り当て方は `config.mode`（[`Mode`](crate::Mode)）による。
 pub fn compute(config: &Config, log: &[Event], now: Option<Micros>) -> Outcome {
+    // Strict なら推定に使う項目を外した設定で計算する（以降の処理はモードを気にしない）
+    let config = &*config.effective();
     let mut warnings = Vec::new();
     let input = Input::collect(config, log, &mut warnings);
     let dispositions = debounce(config, &input);
@@ -54,6 +57,14 @@ pub fn compute(config: &Config, log: &[Event], now: Option<Micros>) -> Outcome {
 
 // ---------------------------------------------------------------------------
 // 1. 入力を集める
+
+/// 通過記録の時刻から引く遅延。センサーの反応の遅れなので、手動の通過には使わない。
+fn delay(config: &Config, passage: &Passage) -> Micros {
+    match passage.source {
+        PassageSource::Sensor => config.gate(passage.gate).delay,
+        PassageSource::Manual => 0,
+    }
+}
 
 struct PassageIn {
     id: PassageId,
@@ -106,7 +117,7 @@ impl Input {
                         id: p.id,
                         gate: p.gate,
                         raw: p.time,
-                        time: p.time - config.gate(p.gate).delay,
+                        time: p.time - delay(config, &p),
                         source: p.source,
                     });
                 }

@@ -7,11 +7,13 @@
 //! - [`hub`] はメモリー上のセッションと、結果の計算・配信
 //! - [`api`] は HTTP の API と、画面のファイルの配信
 //! - [`feed`] はシミュレーターで生成したセッションを、実際の時間の流れで流し込む
+//! - [`link`] は計測ボックスからの入力（TCP）
 
 pub mod api;
 pub mod error;
 pub mod feed;
 pub mod hub;
+pub mod link;
 pub mod store;
 pub mod types;
 

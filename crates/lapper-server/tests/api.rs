@@ -51,15 +51,22 @@ async fn create_session_append_events_and_read_the_result() {
     let session: SessionInfo = serde_json::from_slice(&body).unwrap();
     assert_eq!(session.gate_names[&GateId(1)], "G");
 
-    let events = json!({ "events": [
-        { "type": "Enqueue", "car": 7, "at": 0 },
-        { "type": "Passage", "id": 1, "gate": 0, "time": 10_000_000, "source": "Sensor" },
-        { "type": "Passage", "id": 2, "gate": 1, "time": 72_345_000, "source": "Sensor" },
+    let events = json!({ "source": "test", "events": [
+        { "seq": 0, "event": { "type": "Enqueue", "car": 7, "at": 0 } },
+        { "seq": 1, "event": { "type": "Passage", "id": 1, "gate": 0, "time": 10_000_000, "source": "Sensor" } },
+        { "seq": 2, "event": { "type": "Passage", "id": 2, "gate": 1, "time": 72_345_000, "source": "Sensor" } },
     ]});
     let uri = format!("/api/sessions/{}/events", session.id);
+    let (status, body) = send(&app, "POST", &uri, Some(events.clone())).await;
+    assert_eq!(status, StatusCode::OK);
+    let appended: Appended = serde_json::from_slice(&body).unwrap();
+    assert_eq!((appended.accepted, appended.events), (3, 3));
+
+    // 同じ要求を送り直しても、二重には入らない
     let (status, body) = send(&app, "POST", &uri, Some(events)).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(serde_json::from_slice::<Appended>(&body).unwrap().events, 3);
+    let appended: Appended = serde_json::from_slice(&body).unwrap();
+    assert_eq!((appended.accepted, appended.events), (0, 3));
 
     let uri = format!("/api/sessions/{}/snapshot", session.id);
     let (status, body) = send(&app, "GET", &uri, None).await;
@@ -87,6 +94,18 @@ async fn errors_have_matching_status_codes() {
     let mut body = session_body();
     body["name"] = json!(" ");
     let (status, _) = send(&app, "POST", "/api/sessions", Some(body)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let (_, body) = send(&app, "POST", "/api/sessions", Some(session_body())).await;
+    let session: SessionInfo = serde_json::from_slice(&body).unwrap();
+    let uri = format!("/api/sessions/{}/events", session.id);
+    // 番号のないイベント
+    let events = json!({ "source": "test", "events": [{ "type": "Enqueue", "car": 7, "at": 0 }] });
+    let (status, _) = send(&app, "POST", &uri, Some(events)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    // 送り手が空
+    let events = json!({ "source": "", "events": [] });
+    let (status, _) = send(&app, "POST", &uri, Some(events)).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
